@@ -30,17 +30,22 @@
 ******************************************************************************/
 
 #include <stdlib.h>
+#include <Arduino.h>
 #include "epd5in65f.h"
 #include "imagedata.h"
 
 Epd::~Epd() {
 };
 
-Epd::Epd() {
-    reset_pin = RST_PIN;
-    dc_pin = DC_PIN;
-    cs_pin = CS_PIN;
-    busy_pin = BUSY_PIN;
+Epd::Epd(SPIClass * SPI_BUS, int16_t DIN_Pin, int16_t CS_Pin, int16_t SCK_Pin, int16_t RESET_Pin, int16_t DC_Pin, int16_t BUSY_Pin) {
+    _DIN_Pin=DIN_Pin;
+    _CS_Pin=CS_Pin;
+    _SCK_Pin=SCK_Pin;
+    _RESET_Pin=RESET_Pin;
+    _DC_Pin=DC_Pin;
+    _BUSY_Pin=BUSY_Pin;
+    _SPI_BUS=SPI_BUS;
+    
     width = EPD_WIDTH;
     height = EPD_HEIGHT;
 };
@@ -50,9 +55,10 @@ function :  Initialize the e-Paper register
 parameter:
 ******************************************************************************/
 int Epd::Init(void) {
-    if (IfInit() != 0) {
-        return -1;
-    }
+    /* First setup the SPI Port here */
+    this->_SPI_BUS->begin(this->_SCK_Pin, -1 , this->_DIN_Pin, this->_CS_Pin); //SCLK, MISO, MOSI, SS
+    //We only use Dout on the ESP32 here 
+    this->_SPI_BUS->beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
     Reset();
     EPD_5IN65F_BusyHigh();
     SendCommand(0x00);
@@ -85,7 +91,8 @@ int Epd::Init(void) {
     SendCommand(0xE3);
     SendData(0xAA);
 	
-    DelayMs(100);
+    delay(100); //delay functin, here okay as we run on an OS
+    
     SendCommand(0x50);
     SendData(0x37);
 
@@ -96,26 +103,32 @@ int Epd::Init(void) {
  *  @brief: basic function for sending commands
  */
 void Epd::SendCommand(unsigned char command) {
-    DigitalWrite(dc_pin, LOW);
-    SpiTransfer(command);
+    digitalWrite(this->_DC_Pin, LOW);
+    digitalWrite(this->_CS_Pin, LOW);
+    this->_SPI_BUS->transfer(command);
+    digitalWrite(this->_CS_Pin, HIGH);
 }
 
 /**
  *  @brief: basic function for sending data
  */
 void Epd::SendData(unsigned char data) {
-    DigitalWrite(dc_pin, HIGH);
-    SpiTransfer(data);
+    digitalWrite(this->_DC_Pin, HIGH);
+    digitalWrite(this->_CS_Pin, LOW);
+    this->_SPI_BUS->transfer(data);
+    digitalWrite(this->_CS_Pin, HIGH);
+    
 }
 
 void Epd::EPD_5IN65F_BusyHigh(void)// If BUSYN=0 then waiting
 {
-    while(!(DigitalRead(BUSY_PIN)));
+    while(!(digitalRead(this->_BUSY_Pin)));
 }
 
 void Epd::EPD_5IN65F_BusyLow(void)// If BUSYN=1 then waiting
 {
-    while(DigitalRead(BUSY_PIN));
+    //We have here a chance to never return
+    while(digitalRead(this->_BUSY_Pin));
 }
 
 /**
@@ -124,10 +137,10 @@ void Epd::EPD_5IN65F_BusyLow(void)// If BUSYN=1 then waiting
  *          see Epd::Sleep();
  */
 void Epd::Reset(void) {
-    DigitalWrite(reset_pin, LOW);                //module reset    
-    DelayMs(1);
-    DigitalWrite(reset_pin, HIGH);
-    DelayMs(200);    
+    digitalWrite(this->_RESET_Pin, LOW);                //module reset    
+    delay(1);
+    digitalWrite(this->_RESET_Pin, HIGH);
+    delay(200);    
 }
 
 /******************************************************************************
@@ -153,7 +166,7 @@ void Epd::EPD_5IN65F_Display(const UBYTE *image) {
     EPD_5IN65F_BusyHigh();
     SendCommand(0x02);  //0x02
     EPD_5IN65F_BusyLow();
-	DelayMs(200);
+	  delay(200);
 }
 
 /******************************************************************************
@@ -186,7 +199,7 @@ void Epd::EPD_5IN65F_Display_part(const UBYTE *image, UWORD xstart, UWORD ystart
     EPD_5IN65F_BusyHigh();
     SendCommand(0x02);  //0x02
     EPD_5IN65F_BusyLow();
-	DelayMs(200);
+	  delay(200);
 }
 
 /******************************************************************************
@@ -211,7 +224,7 @@ void Epd::Clear(UBYTE color) {
     EPD_5IN65F_BusyHigh();
     SendCommand(0x02);  //0x02
     EPD_5IN65F_BusyLow();
-    DelayMs(500);
+    delay(500);
 }
 
 /**
@@ -222,11 +235,11 @@ void Epd::Clear(UBYTE color) {
  *          You can use EPD_Reset() to awaken
  */
 void Epd::Sleep(void) {
-    DelayMs(100);
+    delay(100);
     SendCommand(0x07);
     SendData(0xA5);
-    DelayMs(100);
-	DigitalWrite(RST_PIN, 0); // Reset
+    delay(100);
+	  digitalWrite(this->_RESET_Pin, 0); // Reset
 }
 
 /* END OF FILE */

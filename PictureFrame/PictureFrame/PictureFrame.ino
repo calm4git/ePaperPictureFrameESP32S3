@@ -11,6 +11,7 @@
 
 /* Here we collec all the includes needed for this sketch */
 #include "Adafruit_LC709203F.h"
+#include "epd5in65f.h"
 
 /* Here you find the pin definitions for the board */
 #define epd_DIN -1
@@ -30,9 +31,9 @@ RTC_DATA_ATTR uint8_t status    = 0;
 RTC_DATA_ATTR uint8_t image_idx = 0;
 
 /* We need an image buffer and assume a 600*448 pixel 4bpp image and display */
-uint8_t * imagebuffer_ptr = null;
+uint8_t * imagebuffer_ptr = NULL;
 
-
+Epd* epd = new Epd(&SPI,epd_DIN, epd_CS, epd_CLK, epd_RST, epd_DC, epd_BUSY );
 
 /* We need to store some information for the battery here as we only querry once */
 typedef struct  {
@@ -51,7 +52,7 @@ void setup_gpio( ){
   //We also have a power pin for the SD-Card to save power 
   pinMode(SDCARD_PWR, OUTPUT);
   //We will enable power to the sdcard
-  DigitalWrite(SDCARD_PWR, HIGH);
+  digitalWrite(SDCARD_PWR, HIGH);
 
 }
 
@@ -95,11 +96,11 @@ void setup() {
 
   } else if( ESP.getFreeHeap() > (600*448/2) ){
     //This is not the good way to go as we eat up heap as it would be free....
-    imagebuffer_ptr = malloc( (600*448/2) )    
+    imagebuffer_ptr = (uint8_t*)malloc( (600*448/2) );    
   }
 
 
-  if(imagebuffer_ptr == null ){
+  if(imagebuffer_ptr == NULL ){
     //Memory allocation failed ...
     // What to do next?
   } else {
@@ -108,7 +109,7 @@ void setup() {
   //Buffers are in place, lets set the io-pins as needed...
   setup_gpio();
   //Next is to setup the SPI Interface for the epd
-
+  epd->Init();
 
 }
 

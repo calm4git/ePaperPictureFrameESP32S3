@@ -32,8 +32,7 @@
 #ifndef __EPD_5IN65F_H__
 #define __EPD_5IN65F_H__
 
-#include "epdif.h"
-
+#include <SPI.h>
 // Display resolution
 #define EPD_WIDTH       600
 #define EPD_HEIGHT      448
@@ -54,13 +53,13 @@ Color Index
 #define EPD_5IN65F_ORANGE  0x6	///	110
 #define EPD_5IN65F_CLEAN   0x7	///	111   unavailable  Afterimage
 
-class Epd : EpdIf {
+class Epd {
 public:
-    Epd();
+    Epd(SPIClass* SPI_BUS, int16_t DIN_Pin, int16_t CS_Pin, int16_t SCK_Pin, int16_t RESET_Pin, int16_t DC_Pin, int16_t BUSY_Pin);
     ~Epd();
     int  Init(void);
-	void EPD_5IN65F_BusyHigh(void);
-	void EPD_5IN65F_BusyLow(void);
+	  void EPD_5IN65F_BusyHigh(void);
+	  void EPD_5IN65F_BusyLow(void);
     void Reset(void);
     void EPD_5IN65F_Display(const UBYTE *image);
     void EPD_5IN65F_Display_part(const UBYTE *image, UWORD xstart, UWORD ystart, 
@@ -71,10 +70,14 @@ public:
     void Clear(UBYTE color);
 
 private:
-    unsigned int reset_pin;
-    unsigned int dc_pin;
-    unsigned int cs_pin;
-    unsigned int busy_pin;
+    int16_t _DIN_Pin;
+    int16_t _CS_Pin;
+    int16_t _SCK_Pin;
+    int16_t _RESET_Pin;
+    int16_t _DC_Pin;
+    int16_t _BUSY_Pin;
+    SPIClass * _SPI_BUS;
+    
     unsigned long width;
     unsigned long height;
 };
