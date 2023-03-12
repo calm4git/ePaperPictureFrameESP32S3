@@ -66,6 +66,7 @@ public:
                                  UWORD image_width, UWORD image_heigh);
     void SendCommand(unsigned char command);
     void SendData(unsigned char data);
+    void Wake(void);
     void Sleep(void);
     void Clear(UBYTE color);
 
@@ -77,7 +78,6 @@ private:
     int16_t _DC_Pin;
     int16_t _BUSY_Pin;
     SPIClass * _SPI_BUS;
-    
     unsigned long width;
     unsigned long height;
 };

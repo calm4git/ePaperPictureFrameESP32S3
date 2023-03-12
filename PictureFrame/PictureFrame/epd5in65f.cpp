@@ -34,6 +34,8 @@
 #include "epd5in65f.h"
 #include "imagedata.h"
 
+//#define NOEPD
+
 Epd::~Epd() {
 };
 
@@ -56,46 +58,11 @@ parameter:
 ******************************************************************************/
 int Epd::Init(void) {
     /* First setup the SPI Port here */
-    this->_SPI_BUS->begin(this->_SCK_Pin, -1 , this->_DIN_Pin, this->_CS_Pin); //SCLK, MISO, MOSI, SS
+    this->_SPI_BUS->begin(this->_SCK_Pin, -1 , this->_DIN_Pin, -1); //SCLK, ... , MOSI , we use only clock and dout on the esp32-s3
     //We only use Dout on the ESP32 here 
     this->_SPI_BUS->beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
-    Reset();
-    EPD_5IN65F_BusyHigh();
-    SendCommand(0x00);
-    SendData(0xEF);
-    SendData(0x08);
-    SendCommand(0x01);
-    SendData(0x37);
-    SendData(0x00);
-    SendData(0x23);
-    SendData(0x23);
-    SendCommand(0x03);
-    SendData(0x00);
-    SendCommand(0x06);
-    SendData(0xC7);
-    SendData(0xC7);
-    SendData(0x1D);
-    SendCommand(0x30);
-    SendData(0x3C);
-    SendCommand(0x41);
-    SendData(0x00);
-    SendCommand(0x50);
-    SendData(0x37);
-    SendCommand(0x60);
-    SendData(0x22);
-    SendCommand(0x61);
-    SendData(0x02);
-    SendData(0x58);
-    SendData(0x01);
-    SendData(0xC0);
-    SendCommand(0xE3);
-    SendData(0xAA);
-	
-    delay(100); //delay functin, here okay as we run on an OS
-    
-    SendCommand(0x50);
-    SendData(0x37);
-
+    this->Wake();
+    this->Sleep();
     return 0;
 }
 
@@ -122,13 +89,37 @@ void Epd::SendData(unsigned char data) {
 
 void Epd::EPD_5IN65F_BusyHigh(void)// If BUSYN=0 then waiting
 {
-    while(!(digitalRead(this->_BUSY_Pin)));
+    #ifdef NOEPD
+       Serial.print("EPD_5IN65F_BusyHigh() dummy mode (500ms)");
+      delay(500); //Will simulate a busy line .... sort of
+      return;
+    #endif
+    uint32_t start_time = millis();
+    while(!(digitalRead(this->_BUSY_Pin))){
+        if( (millis()-start_time) > (20*1000) ){
+          //This can be considered as error......
+          Serial.print("EPD_5IN65F_BusyHigh() > 20s runtime");
+          start_time = millis();
+        }      
+    }
 }
 
 void Epd::EPD_5IN65F_BusyLow(void)// If BUSYN=1 then waiting
 {
+    #ifdef NOEPD
+      Serial.print("EPD_5IN65F_BusyLow() dummy mode (500ms)");
+      delay(500); //Will simulate a busy line .... sort of
+      return;
+    #endif
     //We have here a chance to never return
-    while(digitalRead(this->_BUSY_Pin));
+    uint32_t start_time = millis();
+    while(digitalRead(this->_BUSY_Pin)){
+      if( (millis()-start_time) > (20*1000) ){
+          //This can be considered as error......
+          Serial.print("EPD_5IN65F_BusyLow() > 20s runtime");
+          start_time = millis();
+        }   
+    }
 }
 
 /**
@@ -242,4 +233,48 @@ void Epd::Sleep(void) {
 	  digitalWrite(this->_RESET_Pin, 0); // Reset
 }
 
+
+void Epd::Wake(void){
+    pinMode(_CS_Pin,OUTPUT);
+    digitalWrite(_CS_Pin, HIGH);
+    pinMode(_DC_Pin, OUTPUT);
+    pinMode(_RESET_Pin, OUTPUT);
+    pinMode(_BUSY_Pin,INPUT_PULLDOWN);
+    Reset();
+    EPD_5IN65F_BusyHigh();
+    SendCommand(0x00);
+    SendData(0xEF);
+    SendData(0x08);
+    SendCommand(0x01);
+    SendData(0x37);
+    SendData(0x00);
+    SendData(0x23);
+    SendData(0x23);
+    SendCommand(0x03);
+    SendData(0x00);
+    SendCommand(0x06);
+    SendData(0xC7);
+    SendData(0xC7);
+    SendData(0x1D);
+    SendCommand(0x30);
+    SendData(0x3C);
+    SendCommand(0x41);
+    SendData(0x00);
+    SendCommand(0x50);
+    SendData(0x37);
+    SendCommand(0x60);
+    SendData(0x22);
+    SendCommand(0x61);
+    SendData(0x02);
+    SendData(0x58);
+    SendData(0x01);
+    SendData(0xC0);
+    SendCommand(0xE3);
+    SendData(0xAA);
+	
+    delay(100); //delay function, here okay as we run on an OS
+    
+    SendCommand(0x50);
+    SendData(0x37);
+}
 /* END OF FILE */
