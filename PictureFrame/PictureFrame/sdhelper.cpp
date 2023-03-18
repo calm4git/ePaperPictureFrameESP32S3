@@ -1,32 +1,33 @@
 #include "sdhelper.h"
 
+#define DBGPRINT Serial
 
 void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
-  Serial.printf("Listing directory: %s\n", dirname);
+  DBGPRINT.printf("Listing directory: %s\n", dirname);
 
   File root = fs.open(dirname);
   if(!root){
-    Serial.println("Failed to open directory");
+    DBGPRINT.println("Failed to open directory");
     return;
   }
   if(!root.isDirectory()){
-    Serial.println("Not a directory");
+    DBGPRINT.println("Not a directory");
     return;
   }
 
   File file = root.openNextFile();
   while(file){
     if(file.isDirectory()){
-      Serial.print("  DIR : ");
-      Serial.println(file.name());
+      DBGPRINT.print("  DIR : ");
+      DBGPRINT.println(file.name());
       if(levels){
         listDir(fs, file.name(), levels -1);
       }
     } else {
-      Serial.print("  FILE: ");
-      Serial.print(file.name());
-      Serial.print("  SIZE: ");
-      Serial.println(file.size());
+      DBGPRINT.print("  FILE: ");
+      DBGPRINT.print(file.name());
+      DBGPRINT.print("  SIZE: ");
+      DBGPRINT.println(file.size());
     }
     file = root.openNextFile();
   }
@@ -35,18 +36,18 @@ void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
 void createDir(fs::FS &fs, const char * path){
   Serial.printf("Creating Dir: %s\n", path);
   if(fs.mkdir(path)){
-    Serial.println("Dir created");
+    DBGPRINT.println("Dir created");
   } else {
-    Serial.println("mkdir failed");
+    DBGPRINT.println("mkdir failed");
   }
 }
 
 void removeDir(fs::FS &fs, const char * path){
-  Serial.printf("Removing Dir: %s\n", path);
+  DBGPRINT.printf("Removing Dir: %s\n", path);
   if(fs.rmdir(path)){
-    Serial.println("Dir removed");
+    DBGPRINT.println("Dir removed");
   } else {
-    Serial.println("rmdir failed");
+    DBGPRINT.println("rmdir failed");
   }
 }
 
@@ -55,35 +56,35 @@ void readFile(fs::FS &fs, const char * path){
 
   File file = fs.open(path);
   if(!file){
-    Serial.println("Failed to open file for reading");
+    DBGPRINT.println("Failed to open file for reading");
     return;
   }
 
   Serial.print("Read from file: ");
   while(file.available()){
-    Serial.write(file.read());
+    DBGPRINT.write(file.read());
   }
   file.close();
 }
 
 void writeFile(fs::FS &fs, const char * path, const char * message){
-  Serial.printf("Writing file: %s\n", path);
+  DBGPRINT.printf("Writing file: %s\n", path);
 
   File file = fs.open(path, FILE_WRITE);
   if(!file){
-    Serial.println("Failed to open file for writing");
+    DBGPRINT.println("Failed to open file for writing");
     return;
   }
   if(file.print(message)){
-    Serial.println("File written");
+    DBGPRINT.println("File written");
   } else {
-    Serial.println("Write failed");
+    DBGPRINT.println("Write failed");
   }
   file.close();
 }
 
 void appendFile(fs::FS &fs, const char * path, const char * message){
-  Serial.printf("Appending to file: %s\n", path);
+  DBGPRINT.printf("Appending to file: %s\n", path);
 
   File file = fs.open(path, FILE_APPEND);
   if(!file){
@@ -91,9 +92,9 @@ void appendFile(fs::FS &fs, const char * path, const char * message){
     return;
   }
   if(file.print(message)){
-      Serial.println("Message appended");
+      DBGPRINT.println("Message appended");
   } else {
-    Serial.println("Append failed");
+    DBGPRINT.println("Append failed");
   }
   file.close();
 }
@@ -101,32 +102,32 @@ void appendFile(fs::FS &fs, const char * path, const char * message){
 void renameFile(fs::FS &fs, const char * path1, const char * path2){
   Serial.printf("Renaming file %s to %s\n", path1, path2);
   if (fs.rename(path1, path2)) {
-    Serial.println("File renamed");
+    DBGPRINT.println("File renamed");
   } else {
-    Serial.println("Rename failed");
+    DBGPRINT.println("Rename failed");
   }
 }
 
 void deleteFile(fs::FS &fs, const char * path){
-  Serial.printf("Deleting file: %s\n", path);
+  DBGPRINT.printf("Deleting file: %s\n", path);
   if(fs.remove(path)){
-    Serial.println("File deleted");
+    DBGPRINT.println("File deleted");
   } else {
-    Serial.println("Delete failed");
+    DBGPRINT.println("Delete failed");
   }
 }
 
 File openFileAtIdx(fs::FS &fs, const char * path, uint32_t idx){
   uint32_t current_idx=0;
   File file;
-  Serial.printf("Open at path %s at index %u", path, idx);
+  DBGPRINT.printf("Open at path %s at index %u", path, idx);
   File root = fs.open(path);
     if(!root){
-        Serial.println("Failed to open directory");
+        DBGPRINT.println("Failed to open directory");
         return file;
     }
     if(!root.isDirectory()){
-        Serial.println("Not a directory");
+        DBGPRINT.println("Not a directory");
         return file;
     }
     
@@ -140,10 +141,10 @@ File openFileAtIdx(fs::FS &fs, const char * path, uint32_t idx){
               current_idx++;
               file = root.openNextFile();
             } else {
-              Serial.print("  FILE: ");
-              Serial.print(file.name());
-              Serial.print("  SIZE: ");
-              Serial.println(file.size());
+              DBGPRINT.print("  FILE: ");
+              DBGPRINT.print(file.name());
+              DBGPRINT.print("  SIZE: ");
+              DBGPRINT.println(file.size());
               break; //exit while() and retun file obj
             }
         }        

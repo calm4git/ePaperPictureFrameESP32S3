@@ -32,10 +32,9 @@
 #include <stdlib.h>
 #include <Arduino.h>
 #include "epd5in65f.h"
-#include "imagedata.h"
 
 //#define NOEPD
-
+#define DBGPRINT Serial1
 Epd::~Epd() {
 };
 
@@ -58,13 +57,21 @@ parameter:
 ******************************************************************************/
 int Epd::Init(void) {
     /* First setup the SPI Port here */
-    this->_SPI_BUS->begin(this->_SCK_Pin, -1 , this->_DIN_Pin, -1); //SCLK, ... , MOSI , we use only clock and dout on the esp32-s3
-    //We only use Dout on the ESP32 here 
-    this->_SPI_BUS->beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
+
+    this->InitSPI();
     this->Wake();
     this->Sleep();
     return 0;
 }
+
+void Epd::InitSPI(void) {
+    /* First setup the SPI Port here */
+    this->_SPI_BUS->begin(this->_SCK_Pin, -1 , this->_DIN_Pin, -1); //SCLK, ... , MOSI , we use only clock and dout on the esp32-s3
+    //We only use Dout on the ESP32 here 
+    this->_SPI_BUS->beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
+
+}
+
 
 /**
  *  @brief: basic function for sending commands
@@ -90,7 +97,7 @@ void Epd::SendData(unsigned char data) {
 void Epd::EPD_5IN65F_BusyHigh(void)// If BUSYN=0 then waiting
 {
     #ifdef NOEPD
-       Serial.print("EPD_5IN65F_BusyHigh() dummy mode (500ms)");
+      DBGPRINT.print("EPD_5IN65F_BusyHigh() dummy mode (500ms)");
       delay(500); //Will simulate a busy line .... sort of
       return;
     #endif
@@ -98,9 +105,9 @@ void Epd::EPD_5IN65F_BusyHigh(void)// If BUSYN=0 then waiting
     while(!(digitalRead(this->_BUSY_Pin))){
         if( (millis()-start_time) > (20*1000) ){
           //This can be considered as error......
-          Serial.print("EPD_5IN65F_BusyHigh() > 20s runtime");
+          DBGPRINT.print("EPD_5IN65F_BusyHigh() > 20s runtime");
           start_time = millis();
-        }      
+        }                
     }
 }
 
@@ -116,7 +123,7 @@ void Epd::EPD_5IN65F_BusyLow(void)// If BUSYN=1 then waiting
     while(digitalRead(this->_BUSY_Pin)){
       if( (millis()-start_time) > (20*1000) ){
           //This can be considered as error......
-          Serial.print("EPD_5IN65F_BusyLow() > 20s runtime");
+          DBGPRINT.print("EPD_5IN65F_BusyLow() > 20s runtime");
           start_time = millis();
         }   
     }
@@ -138,7 +145,7 @@ void Epd::Reset(void) {
 function :  Sends the image buffer in RAM to e-Paper and displays
 parameter:
 ******************************************************************************/
-void Epd::EPD_5IN65F_Display(const UBYTE *image) {
+void Epd::EPD_5IN65F_Display(uint8_t *image) {
     unsigned long i,j;
     SendCommand(0x61);//Set Resolution setting
     SendData(0x02);
@@ -148,17 +155,44 @@ void Epd::EPD_5IN65F_Display(const UBYTE *image) {
     SendCommand(0x10);
     for(i=0; i<height; i++) {
         for(j=0; j<width/2; j++) {
-            SendData(image[j+((width/2)*i)]);
-		}
+          SendData(image[j+((width/2)*i)]);
+		    }        
+    }
+    SendCommand(0x04);//0x04 -> Power On
+    EPD_5IN65F_BusyHigh();
+    SendCommand(0x12);//0x12 -> Refesh display 
+    esp_sleep_enable_timer_wakeup(25*1000 * 1000); //25s cpu sleep
+    esp_light_sleep_start();            
+    EPD_5IN65F_BusyHigh();
+    SendCommand(0x02);  //0x02  -> Power Off
+    EPD_5IN65F_BusyLow();
+	  delay(200);
+}
+
+void Epd::EPD_5IN65F_SendImage(const UBYTE *image) {
+    
+    SendCommand(0x61);//Set Resolution setting
+    SendData(0x02);
+    SendData(0x58);
+    SendData(0x01);
+    SendData(0xC0);
+    SendCommand(0x10);
+    for(uint32_t i=0; i<134400; i++) {
+            SendData(image[i]);
     }
     SendCommand(0x04);//0x04
     EPD_5IN65F_BusyHigh();
     SendCommand(0x12);//0x12
+}
+
+void Epd::EPD_5IN65F_WaitImageUpdateDone(){
     EPD_5IN65F_BusyHigh();
-    SendCommand(0x02);  //0x02
+    SendCommand(0x02);  //0x02  -> Power Off
     EPD_5IN65F_BusyLow();
 	  delay(200);
 }
+
+
 
 /******************************************************************************
 function :  Sends the part image buffer in RAM to e-Paper and displays

@@ -58,12 +58,15 @@ public:
     Epd(SPIClass* SPI_BUS, int16_t DIN_Pin, int16_t CS_Pin, int16_t SCK_Pin, int16_t RESET_Pin, int16_t DC_Pin, int16_t BUSY_Pin);
     ~Epd();
     int  Init(void);
+    void  InitSPI(void);
 	  void EPD_5IN65F_BusyHigh(void);
 	  void EPD_5IN65F_BusyLow(void);
     void Reset(void);
-    void EPD_5IN65F_Display(const UBYTE *image);
+    void EPD_5IN65F_Display(uint8_t* image);
     void EPD_5IN65F_Display_part(const UBYTE *image, UWORD xstart, UWORD ystart, 
                                  UWORD image_width, UWORD image_heigh);
+    void EPD_5IN65F_SendImage(const UBYTE *image);
+    void EPD_5IN65F_WaitImageUpdateDone( void );
     void SendCommand(unsigned char command);
     void SendData(unsigned char data);
     void Wake(void);
@@ -80,6 +83,7 @@ private:
     SPIClass * _SPI_BUS;
     unsigned long width;
     unsigned long height;
+    uint8_t linebuffer[300];
 };
 
 #endif /* EPD5IN83B_HD_H */
