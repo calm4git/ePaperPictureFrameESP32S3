@@ -15,38 +15,48 @@
 #include "SD.h"
 #include "SPI.h"
 
+
 #include "Adafruit_LC709203F.h"
 #include "epd5in65f.h"
 #include "sdhelper.h"
 #include "bmpreader.h"
-
+#include "images.h"
 /* Here you find the pin definitions for the board */
-#define epd_DIN 35
-#define epd_CLK 36
-#define epd_CS 37
-#define epd_DC 8
-#define epd_RST 14
-#define epd_BUSY 15
+#define epd_DIN   35
+#define epd_CLK   36
+#define epd_CS    37
+#define epd_DC    8
+#define epd_RST   14
+#define epd_BUSY  15
 
-#define SD_CLK 12
+#define SD_CLK  12
 #define SD_MOSI 11
 #define SD_MISO 13
-#define SD_CS 10
+#define SD_CS   10
 
 /* 1bit mode  
   SD_MOSI = SD_CMD
   SD_MISO = SD_D0  
   SD_SCK  = SD_SCK
 */
-#define SD_CMD 11 
-#define SD_D0 13
-#define SD_D1 -1
-#define SD_D2 -1
-#define SD_D3 10
-#define SD_SCK 12
+#define SD_CMD  11 
+#define SD_D0   13
+#define SD_D1   -1
+#define SD_D2   -1
+#define SD_D3   10
+#define SD_SCK  12
 
-//15 second sleep time
-#define SLEEP_TIME_MS 15000
+#define LP_DISABLE_IN  18
+#define WIFI_ENABLE_IN  17
+
+#define RTC_VCC 5
+#define RTC_GND 6
+
+//Sleeptime in us
+#define SLEEP_TIME_1s     (1000000ULL)
+#define SLEEP_TIME_1m    (60000000ULL)
+#define SLEEP_TIME_1h  (3600000000ULL)
+#define SLEEP_TIME_1d (86400000000ULL)
 
 #define DBGPRINT Serial1
 
@@ -55,6 +65,7 @@ Adafruit_LC709203F lc;
 
 RTC_DATA_ATTR uint32_t image_idx = 0;
 RTC_DATA_ATTR uint32_t bootCount = 0;
+RTC_DATA_ATTR uint32_t lastboottime = 0;
 
 /* We need an image buffer and assume a 600*448 pixel 4bpp image and display */
 uint8_t * imagebuffer_ptr = NULL;
@@ -78,6 +89,42 @@ void set_next_idx(uint32_t);
 uint32_t get_current_idx( void );
 void read_image_sdcard( void );
 void init_display ( void);
+void entersleep( void );
+void entersleepinf( void );
+
+/*-----------------------------------------
+Function  : entersleep
+Input     : uint64 sleeptime 
+Output    : none
+Remarks   : sleep time in micor seconds
+-------------------------------------------*/
+void entersleep( void ){
+  if( HIGH == digitalRead(LP_DISABLE_IN) ) {
+     DBGPRINT.print("Sleep disable by LP_DISABLE_IN");
+     delay(1000);
+  } else {
+    //If we end here we will try to sleep for a while 
+    esp_sleep_enable_timer_wakeup( SLEEP_TIME_1d ); //24 hours
+    esp_deep_sleep_start();  
+  }
+}
+
+/*-----------------------------------------
+Function  : entersleepinf
+Input     : none
+Output    : none
+Remarks   : sleep without return
+-------------------------------------------*/
+void entersleepinf( ){
+  if(HIGH == digitalRead(LP_DISABLE_IN) ) {
+     DBGPRINT.print("Sleep disable by LP_DISABLE_IN");
+     delay(1000);
+  } else {
+    esp_deep_sleep_start();  
+  }
+}
+
+
 
 /*-----------------------------------------
 Function  : setup_gpio
@@ -91,6 +138,9 @@ void setup_gpio( ){
   //Disable power to sd-card
   pinMode(I2C_POWER,OUTPUT);
   digitalWrite(I2C_POWER,LOW);
+
+  pinMode (LP_DISABLE_IN, INPUT_PULLDOWN);
+
 }
 
 /*-----------------------------------------
@@ -100,18 +150,13 @@ Output    : none
 Remarks   : Configures SDHC/MMC Controller
             and mounts SD-Card
 -------------------------------------------*/
-bool setup_sdmmc( void ){
-  if(80>getCpuFrequencyMhz()){
-    setCpuFrequencyMhz(80); //Needed to make the sd card controller work    
-  }
-  
+bool setup_sdmmc( void ){ 
+  SDCardPower(true);
   if(false == SD_MMC.setPins(SD_CLK, SD_CMD, SD_D0, SD_D1, SD_D2, SD_D3) ){
     //This is a problem ... sort of
     DBGPRINT.println("SD/MMC Pin setup failed");
     return false;
   } else {
-    
-    SDCardPower(true);
     delay(100); //Card need some time to initalize
     //We now can try to mount the sd-card (20MHz 1bit mode)
     if(!SD_MMC.begin("/sdcard", true, true, 20000, 5)){
@@ -187,22 +232,11 @@ void loadnextimage(uint8_t* imgptr){
   
   
   if(false == read_image_sdcard(imgptr)){
-    //We need to load the  File not found image  
-    uint8_t color = 0;
-      for(uint32_t y=0;y<448;y++){
-        for(uint32_t i=0;i<300;i++){
-          imgptr[(y*300)+i] = ( (color<<4) | color );
-        }
-        if(y%16==0){
-          color++;
-          if(color>7){
-            color = 0;
-          }
-        }
-      }
+    //We load a dummy image from flash here
+    
+  } else {
+    update_display(imgptr);
   }
-  
-  update_display(imgptr);
   
   
 }
@@ -267,8 +301,7 @@ void wake_display( void ){
 }
 
 void setup() {
-  uint32_t serial_wait=0;
-  
+  bootCount=bootCount+1;
   Serial1.begin(460800,SERIAL_8N1,-1,TX1);
   if (!lc.begin()) {
     DBGPRINT.println(F("Couldnt find Adafruit LC709203F?\nMake sure a battery is plugged in!"));    
@@ -291,11 +324,6 @@ void setup() {
   - If we have more than 10% within the battery we will load the next image
   - If we have 10% and below we will display a battery empty image and after sleep infinite
   */
-  if (battery.percent<10){
-    //Display empty symbol and do a long sleep ( as long as possible )
-    
-  } 
-
   if(ESP.getPsramSize()> (600*448/2) ){
     //Next is to get an image buffer with 600*448*4Bit = 144000 byte from psram 
     //This will be slower than getting some heap but also give more headroom for 
@@ -310,27 +338,47 @@ void setup() {
 
   if(imagebuffer_ptr == NULL ){
     //Memory allocation failed ...
-    // What to do next?
+    epd->Init();
+    epd->Wake();
+    epd->Clear(EPD_5IN65F_RED);
+    epd->Sleep();
   } else {
     //We are good to go 
   }
+  
+  if (battery.percent<10){
+    //Display empty symbol and do a long sleep ( as long as possible )
+    load_bitmap_for_epd_array((uint8_t*)_acBatteryEmpty,imagebuffer_ptr);
+    init_display();
+    update_display(imagebuffer_ptr);
+    entersleepinf();  //Sleep forever....
+  } 
+
+  
   //Buffers are in place, lets set the io-pins as needed...
   DBGPRINT.println("Setup GPIO");
   setup_gpio();
+  
   DBGPRINT.println("Setup SD/MMC");
-  setup_sdmmc();
-  DBGPRINT.println("Init Display");
-  init_display();
-  DBGPRINT.println("Load BMP");
-  loadnextimage(imagebuffer_ptr);
-  DBGPRINT.println("Update done");
+  if(true == setup_sdmmc() ){
+    DBGPRINT.println("Init Display");
+    init_display();
+    DBGPRINT.println("Load BMP");
+    loadnextimage(imagebuffer_ptr);
+    end_sdmmc();
+    DBGPRINT.println("Update done");
+    entersleep(); //Sleep for 24 hours
+  } else {
+    load_bitmap_for_epd_array((uint8_t*)_acNo_Sd_Card,imagebuffer_ptr);
+    init_display();
+    update_display(imagebuffer_ptr);
+    
+    entersleepinf();  //Sleep forever....
+  }
+    
 }
 
 void loop() {
-  //If we end here we will try to sleep for a while 
-  //esp_sleep_enable_timer_wakeup( (uint64_t)(24*60*60*1000000) ); //24 hours
-  esp_sleep_enable_timer_wakeup( (uint64_t)(15*60*1000000) ); //15min
-  esp_deep_sleep_start();  
-  
+  entersleep(); //Sleep for 24 hours
 }
 

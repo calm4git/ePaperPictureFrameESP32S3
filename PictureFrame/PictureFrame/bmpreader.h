@@ -6,3 +6,5 @@ Output    : bool
 Remarks   : none
 -------------------------------------------*/
 bool load_bitmap_for_epd(fs::FS &fs, String path, String filename, uint8_t* buffer);
+
+bool load_bitmap_for_epd_array(uint8_t* data, uint8_t* buffer);
