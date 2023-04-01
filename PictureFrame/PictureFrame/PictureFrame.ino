@@ -14,6 +14,7 @@
 #include "SD_MMC.h"
 #include "SD.h"
 #include "SPI.h"
+#include <Preferences.h>
 
 
 #include "Adafruit_LC709203F.h"
@@ -47,7 +48,7 @@
 #define SD_SCK  12
 
 #define LP_DISABLE_IN  18
-#define WIFI_ENABLE_IN  17
+#define BAT_CHK_DISABLE_IN  17
 
 #define RTC_VCC 5
 #define RTC_GND 6
@@ -63,14 +64,14 @@
 /* LC709203 gas gauge */
 Adafruit_LC709203F lc;
 
-RTC_DATA_ATTR uint32_t image_idx = 0;
-RTC_DATA_ATTR uint32_t bootCount = 0;
-RTC_DATA_ATTR uint32_t lastboottime = 0;
+//RTC_DATA_ATTR uint32_t image_idx = 0;
 
+
+Preferences preferences;
 /* We need an image buffer and assume a 600*448 pixel 4bpp image and display */
 uint8_t * imagebuffer_ptr = NULL;
 
-Epd* epd = new Epd(&SPI,epd_DIN, epd_CS, epd_CLK, epd_RST, epd_DC, epd_BUSY );
+Epd epd(&SPI,epd_DIN, epd_CS, epd_CLK, epd_RST, epd_DC, epd_BUSY );
 
 /* We need to store some information for the battery here as we only querry once */
 typedef struct  {
@@ -79,6 +80,8 @@ float   voltage;
 } battery_t;
 
 battery_t battery;
+
+TaskHandle_t MonitorTaskHandle = NULL;
 
 /* Function prototypes */
 void setup_gpio ( void );
@@ -92,6 +95,38 @@ void init_display ( void);
 void entersleep( void );
 void entersleepinf( void );
 
+void tskMonitor(void *arg);
+
+
+
+
+void tskMonitor(void *arg){
+  //Monitor Task, will be used to set the display to sleep
+  //We will sleep for 60 seconds and then pu the system in sleep again
+  while(1==1){
+    delay(60000);
+    DBGPRINT.print("Sleep by MonitorTask");
+    //As we assume something went wrong we only seep for a minute
+    if( HIGH == digitalRead(LP_DISABLE_IN) ) {
+      DBGPRINT.print("Monitor Sleep disable by LP_DISABLE_IN");
+      
+    } else {
+      DBGPRINT.println("Enter ESP32-S3 1 min deep sleep mode");
+      DBGPRINT.flush();
+      esp_sleep_enable_timer_wakeup( SLEEP_TIME_1m ); //1 minute
+      esp_deep_sleep_start();  
+    }
+  }
+    
+}
+
+
+
+
+
+
+
+
 /*-----------------------------------------
 Function  : entersleep
 Input     : uint64 sleeptime 
@@ -99,14 +134,16 @@ Output    : none
 Remarks   : sleep time in micor seconds
 -------------------------------------------*/
 void entersleep( void ){
-  if( HIGH == digitalRead(LP_DISABLE_IN) ) {
+  while( HIGH == digitalRead(LP_DISABLE_IN) ) {
      DBGPRINT.print("Sleep disable by LP_DISABLE_IN");
      delay(1000);
-  } else {
-    //If we end here we will try to sleep for a while 
-    esp_sleep_enable_timer_wakeup( SLEEP_TIME_1d ); //24 hours
-    esp_deep_sleep_start();  
-  }
+  } 
+  //If we end here we will try to sleep for a while 
+  DBGPRINT.println("Enter ESP32-S3 1 day deep sleep mode");
+  DBGPRINT.flush();
+  esp_sleep_enable_timer_wakeup( SLEEP_TIME_1d ); //24 hours
+  esp_deep_sleep_start();  
+  
 }
 
 /*-----------------------------------------
@@ -116,12 +153,14 @@ Output    : none
 Remarks   : sleep without return
 -------------------------------------------*/
 void entersleepinf( ){
-  if(HIGH == digitalRead(LP_DISABLE_IN) ) {
-     DBGPRINT.print("Sleep disable by LP_DISABLE_IN");
+  while(HIGH == digitalRead(LP_DISABLE_IN) ) {
+     DBGPRINT.print("Inf Sleep disable by LP_DISABLE_IN");
      delay(1000);
-  } else {
-    esp_deep_sleep_start();  
-  }
+  } 
+  DBGPRINT.println("Enter ESP32-S3 infinite deep sleep mode");
+  DBGPRINT.flush();
+  esp_sleep_enable_timer_wakeup( 30*SLEEP_TIME_1d ); //1 month hours
+  esp_deep_sleep_start();   
 }
 
 
@@ -140,6 +179,7 @@ void setup_gpio( ){
   digitalWrite(I2C_POWER,LOW);
 
   pinMode (LP_DISABLE_IN, INPUT_PULLDOWN);
+  pinMode (BAT_CHK_DISABLE_IN, INPUT_PULLDOWN);
 
 }
 
@@ -157,7 +197,7 @@ bool setup_sdmmc( void ){
     DBGPRINT.println("SD/MMC Pin setup failed");
     return false;
   } else {
-    delay(100); //Card need some time to initalize
+    delay(150); //Card need some time to initalize
     //We now can try to mount the sd-card (20MHz 1bit mode)
     if(!SD_MMC.begin("/sdcard", true, true, 20000, 5)){
           Serial.println("Card Mount Failed");
@@ -168,18 +208,7 @@ bool setup_sdmmc( void ){
       if(cardType == CARD_NONE){
           Serial.println("No SD_MMC card attached");
           return false;
-      } else {
-          DBGPRINT.print("SD_MMC Card Type: ");
-          if(cardType == CARD_MMC){
-              DBGPRINT.println("MMC");
-          } else if(cardType == CARD_SD){
-              DBGPRINT.println("SDSC");
-          } else if(cardType == CARD_SDHC){
-              DBGPRINT.println("SDHC");
-          } else {
-              DBGPRINT.println("UNKNOWN");
-          }
-      }
+      } 
       uint64_t cardSize = SD_MMC.cardSize() / (1024 * 1024);
       DBGPRINT.printf("SD Card Size: %lluMB\n", cardSize);
       return true;
@@ -215,10 +244,8 @@ Remarks   : User needs to provide buffer
             with image 
 -------------------------------------------*/
 void update_display(uint8_t* imgptr){
-  wake_display();
-  //epd->Clear(EPD_5IN65F_BLUE);
-  epd->EPD_5IN65F_Display(imgptr);
-  epd->Sleep();
+  DBGPRINT.println("Write new image");
+  epd.EPD_5IN65F_Display(imgptr);
 }
 
 /*-----------------------------------------
@@ -234,11 +261,7 @@ void loadnextimage(uint8_t* imgptr){
   if(false == read_image_sdcard(imgptr)){
     //We load a dummy image from flash here
     
-  } else {
-    update_display(imgptr);
-  }
-  
-  
+  } 
 }
 
 bool read_image_sdcard(uint8_t* img_ptr ){
@@ -252,18 +275,29 @@ bool read_image_sdcard(uint8_t* img_ptr ){
   
   File file = openFileAtIdx(SD_MMC,path.c_str(),index);
   if(!file){
+    DBGPRINT.printf("Failed to open image at idx %i \r\n",index);
     index=0;    
-    DBGPRINT.printf("Failed to open image at %i idx\r\n",index);
+    DBGPRINT.printf("Try to open image at idx %i \r\n",index);
     File file = openFileAtIdx(SD_MMC,path.c_str(),0);
     index++;
+    if(!file){
+      DBGPRINT.printf("Can't read image at idx %i \r\n",index);
+      DBGPRINT.printf("Giving up for now.....");
+      index=0;
+      result = false;
+      filename="";      
+    } else {
+      filename = String(file.name());
+      file.close();  
+    }       
     set_next_idx(index);
   } else {
     index++;
     set_next_idx(index);
+    filename = String(file.name());
+    file.close();
   }
-  filename = String(file.name());
-  file.close();
-
+ 
   if(filename != ""){ //We can try to read the file    
     result =  load_bitmap_for_epd(SD_MMC, path,filename, img_ptr);
   } else {
@@ -278,47 +312,58 @@ bool read_image_sdcard(uint8_t* img_ptr ){
 }
 
 void set_next_idx( uint32_t idx){
-  image_idx =idx; //Move data into RTC RAM
-  DBGPRINT.printf("Set image idx %i \r\n", image_idx);
+  //image_idx =idx; //Move data into RTC RAM
+  preferences.putULong("counter", idx);
+  DBGPRINT.printf("Set image idx %i \r\n", idx);
 }
 
 uint32_t get_current_idx( void ){
-  uint32_t idx = image_idx;
-  DBGPRINT.printf("Get image idx %i \r\n", image_idx);
+  //uint32_t idx = image_idx;
+  uint32_t idx = preferences.getULong("counter",0);
+  DBGPRINT.printf("Get image idx %i \r\n", idx);
   return idx;
 }
 
 void init_display ( void){
-  DBGPRINT.print("Init edp");
-  epd->Init();
-  DBGPRINT.print("Init done");  
+  DBGPRINT.print("Setup EPD SPI");
+  epd.Init();
+  DBGPRINT.print("Setup EPD SPI");  
 }
 
 void wake_display( void ){
   DBGPRINT.print("wakeup display");
-  epd->Wake();
+  epd.Wake();
   DBGPRINT.print("wakeup done");
 }
 
 void setup() {
-  bootCount=bootCount+1;
   Serial1.begin(460800,SERIAL_8N1,-1,TX1);
+//Buffers are in place, lets set the io-pins as needed...
+ battery.voltage=0;
+ battery.percent=0;
   if (!lc.begin()) {
-    DBGPRINT.println(F("Couldnt find Adafruit LC709203F?\nMake sure a battery is plugged in!"));    
+    DBGPRINT.println(F("No LC709203F found"));    
   } else {
     DBGPRINT.println(F("Found LC709203F"));
-    DBGPRINT.print("Version: 0x"); 
-    DBGPRINT.println(lc.getICversion(), HEX);
-
     lc.setThermistorB(3950);
-    DBGPRINT.print("Thermistor B = "); Serial.println(lc.getThermistorB());
-
+    
     lc.setPackSize(LC709203F_APA_2000MAH);
     lc.setAlarmVoltage(3.5);
+    Serial.print("Batt_Voltage:");
+    Serial.print(lc.cellVoltage(), 3);
+    Serial.print("\t");
+    Serial.print("Batt_Percent:");
+    Serial.print(lc.cellPercent(), 1);
+    Serial.println("");
     battery.voltage = lc.cellVoltage();
     battery.percent = lc.cellPercent(); 
     lc.setPowerMode(LC709203F_POWER_SLEEP);
   }
+
+  preferences.begin("imgframe", false);
+  xTaskCreate(tskMonitor, "Monitor Task", 4096, NULL, 10, &MonitorTaskHandle);
+  DBGPRINT.println("Setup GPIO");
+  setup_gpio();
  
   /* At this point we need to decide what we do:
   - If we have more than 10% within the battery we will load the next image
@@ -333,47 +378,56 @@ void setup() {
 
   } else if( ESP.getFreeHeap() > (600*448/2) ){
     //This is not the good way to go as we eat up heap as it would be free....
-    imagebuffer_ptr = (uint8_t*)malloc( (600*448/2) );    
-  }
+    imagebuffer_ptr = (uint8_t*)malloc( (600*448/2) );  
+    DBGPRINT.println("NO PSRAM use now internal RAM");      
+   }
 
   if(imagebuffer_ptr == NULL ){
     //Memory allocation failed ...
-    epd->Init();
-    epd->Wake();
-    epd->Clear(EPD_5IN65F_RED);
-    epd->Sleep();
+    epd.Init();
+    epd.Wake();
+    epd.Clear(EPD_5IN65F_RED);
+    epd.Sleep();
   } else {
     //We are good to go 
   }
   
-  if (battery.percent<10){
-    //Display empty symbol and do a long sleep ( as long as possible )
-    load_bitmap_for_epd_array((uint8_t*)_acBatteryEmpty,imagebuffer_ptr);
-    init_display();
-    update_display(imagebuffer_ptr);
-    entersleepinf();  //Sleep forever....
-  } 
-
-  
-  //Buffers are in place, lets set the io-pins as needed...
-  DBGPRINT.println("Setup GPIO");
-  setup_gpio();
+  DBGPRINT.printf("Battery charge %f %\n\r",battery.percent);
+  DBGPRINT.printf("Cell Voltage %f V\n\r",battery.voltage);
+  if( ( HIGH == digitalRead(LP_DISABLE_IN) ) || ( HIGH == digitalRead(BAT_CHK_DISABLE_IN) ) ) {
+     DBGPRINT.println("Disable battery check");
+  } else { 
+    if ( (battery.percent<5) ){
+      //Display empty symbol and do a long sleep ( as long as possible )
+      load_bitmap_for_epd_array((uint8_t*)_acBatteryEmpty,imagebuffer_ptr);
+      init_display();
+      wake_display();
+      update_display(imagebuffer_ptr);
+      epd.Sleep();
+      entersleepinf();  //Sleep forever....
+    } 
+  }
   
   DBGPRINT.println("Setup SD/MMC");
   if(true == setup_sdmmc() ){
-    DBGPRINT.println("Init Display");
-    init_display();
     DBGPRINT.println("Load BMP");
     loadnextimage(imagebuffer_ptr);
-    end_sdmmc();
-    DBGPRINT.println("Update done");
+    DBGPRINT.println("Image loaded into RAM");
+    DBGPRINT.println("Init Display");
+    init_display();
+    wake_display();
+    DBGPRINT.println("Update Display");    
+    update_display(imagebuffer_ptr);
+    DBGPRINT.println("Update done, send display to sleep");
+    epd.Sleep();
     entersleep(); //Sleep for 24 hours
   } else {
     load_bitmap_for_epd_array((uint8_t*)_acNo_Sd_Card,imagebuffer_ptr);
     init_display();
+    wake_display();
     update_display(imagebuffer_ptr);
-    
-    entersleepinf();  //Sleep forever....
+    epd.Sleep();
+    entersleep(); //Sleep for 24 hours
   }
     
 }

@@ -59,8 +59,6 @@ int Epd::Init(void) {
     /* First setup the SPI Port here */
 
     this->InitSPI();
-    this->Wake();
-    this->Sleep();
     return 0;
 }
 
@@ -106,6 +104,7 @@ void Epd::EPD_5IN65F_BusyHigh(void)// If BUSYN=0 then waiting
         if( (millis()-start_time) > (20*1000) ){
           //This can be considered as error......
           DBGPRINT.print("EPD_5IN65F_BusyHigh() > 20s runtime");
+          delay(1);
           start_time = millis();
         }                
     }
@@ -124,6 +123,7 @@ void Epd::EPD_5IN65F_BusyLow(void)// If BUSYN=1 then waiting
       if( (millis()-start_time) > (20*1000) ){
           //This can be considered as error......
           DBGPRINT.print("EPD_5IN65F_BusyLow() > 20s runtime");
+          delay(1);
           start_time = millis();
         }   
     }
@@ -161,8 +161,11 @@ void Epd::EPD_5IN65F_Display(uint8_t *image) {
     SendCommand(0x04);//0x04 -> Power On
     EPD_5IN65F_BusyHigh();
     SendCommand(0x12);//0x12 -> Refesh display 
+    DBGPRINT.println("Enter lightsleep (25s)");
+    DBGPRINT.flush();
     esp_sleep_enable_timer_wakeup(25*1000 * 1000); //25s cpu sleep
     esp_light_sleep_start();            
+    DBGPRINT.println("Exit lightsleep");
     EPD_5IN65F_BusyHigh();
     SendCommand(0x02);  //0x02  -> Power Off
     EPD_5IN65F_BusyLow();
