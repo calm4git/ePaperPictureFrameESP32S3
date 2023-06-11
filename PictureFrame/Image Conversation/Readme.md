@@ -1,0 +1,1 @@
+Convert Images to 600 x 448 pixel first and put them into the scaled folder

@@ -7,6 +7,59 @@
   * Adafruit LC709203F
   * Adafruit BusIO
   
+  When it comes to wireing i'm curently not providing a 
+  ready made schematic as for this simple bunch of module
+  some text will do the trick. Also the code and the #defines 
+  itself will mostly tell what to connect where but for later 
+  reproduction some infos:
+
+  Depending on your SD-Card setup / Module it is recommened to 
+  avoid anything with lefelshifter + ldo , this will likly eat up 5mA 
+  for doing nothing assuming you hava a micro-sd-bob intendes 
+  for spi mode, for the E-Paper module the used cable canbe connected
+  to the feather module
+
+Module            Adafruit Feather ESP32-S3
+SD_CLK            12
+SD_MOSI           11
+SD_MISO           13
+SD_CS             10
+VCC               \____Connect using JST connector to Qwiic Connector 
+GND               /
+
+The Qwiic connector one provides a load switch so we can fully power
+down the sd-card to reduce standby current
+
+EPaper        
+DIN               35
+CLK               36
+CS                37
+DC                8
+RST               14
+BUSY              15
+
+Battery (use 2000mA LiPo Flat one)
+Connect to JST connector and make sure
+polarity is not reversed
+
+As Pciture frame you can use an IKEA 
+RIBBA 10x15cm (or 4x6" if you are using non SI units)
+
+As E-Paper a Waveshare 14.35cm (5.65") one is used
+7 color ACeP , SKU 18295
+
+Is there a story behind this? A long time ago i saw a post on
+hackaday for a project by cnlohr of an epaper frame with color.
+[https://github.com/cnlohr/epaper_projects/tree/master/atmega168pb_waveshare_color]
+This one changed every 24h the image as a gift. I had played already with this epaper
+so i thought it would be a nice gift for may parents. 
+
+Some coding and debugging later the ESP32 code was done. Images that have been
+converted can be put on the sd card. The conversationof the image is an other story
+and some batch files are included. Runs on windows but shoudl also be easy to adapt
+for Linux.
+
+
 */
 
 /* Here we collec all the includes needed for this sketch */
